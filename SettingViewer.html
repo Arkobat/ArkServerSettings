@@ -176,35 +176,38 @@
         const m = parseMultipliers(configText);
 
         const tables = {
-            "Taming Time (min)": [],
-            "Breeding Time (min)": [],
-            "Baby Maturation Time (min)": []
+            tamingTime: {
+                header: "Taming Time",
+                values: [],
+                formula: (dino, lvl) => (dino.baseTame + lvl * 2) / m.TamingSpeedMultiplier
+            },
+            breadingTime: {
+                header: "Breeding Time",
+                values: [],
+                formula: (dino, lvl) => (dino.baseBreed + lvl * 5) / (m.BabyMatureSpeedMultiplier * m.EggHatchSpeedMultiplier)
+            },
+            maturationTime: {
+                header: "Maturation Time",
+                values: [],
+                formula: (dino, lvl) => dino.baseBreed / m.BabyMatureSpeedMultiplier
+            }
         };
 
-        console.log(JSON.stringify(m));
         dinos.forEach(dino => {
-            const tameRow = {dino: dino.name, values: {}};
-            const breedRow = {dino: dino.name, values: {}};
-            const matureRow = {dino: dino.name, values: {}};
+            for (const table of Object.values(tables)) {
+                const row = { dino: dino.name, values: {} };
 
-            levels.forEach(lvl => {
-                const tame = (dino.baseTame + lvl * 2) / m.TamingSpeedMultiplier;
-                const breed = (dino.baseBreed + lvl * 5) / (m.BabyMatureSpeedMultiplier * m.EggHatchSpeedMultiplier);
-                const mature = (dino.baseBreed / m.BabyMatureSpeedMultiplier);
+                levels.forEach(lvl => {
+                    row.values[lvl] = formatTime(table.formula(dino, lvl));
+                });
 
-                tameRow.values[lvl] = formatTime(tame);  // tame is in minutes, so * 60 to get seconds
-                breedRow.values[lvl] = formatTime(breed);
-                matureRow.values[lvl] = formatTime(mature);
-            });
-
-            tables["Taming Time (min)"].push(tameRow);
-            tables["Breeding Time (min)"].push(breedRow);
-            tables["Baby Maturation Time (min)"].push(matureRow);
+                table.values.push(row);
+            }
         });
 
         let resultHtml = '';
-        for (const title in tables) {
-            resultHtml += createTable(title, tables[title]);
+        for (const table of Object.values(tables)) {
+            resultHtml += createTable(table.header, table.values);
         }
 
         document.getElementById('results').innerHTML = resultHtml;
@@ -273,7 +276,7 @@
 
         // For each table group: find <h4> title + <table>
         const sections = resultsDiv.querySelectorAll('h4');
-        sections.forEach((header, i) => {
+        sections.forEach(header  => {
             const table = header.nextElementSibling;
             if (table && table.tagName === 'TABLE') {
                 markdown += `### ${header.textContent.trim()}\n\n`;
@@ -393,7 +396,8 @@
             ]);
 
             if (!gusResponse.ok || !gameResponse.ok) {
-                throw new Error("Could not load config files.");
+                showToast("Failed to load config files.", "error");
+                return
             }
 
             const gusText = await gusResponse.text();
