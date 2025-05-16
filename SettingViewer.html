@@ -54,9 +54,19 @@
 <div class="container">
     <h1 class="mb-4">ARK Ascended Config Editor</h1>
 
-    <!-- Dual INI Editors -->
+    <!-- Dual INI Editors with dropdown inside details -->
     <details class="dropzone mb-4" id="drop-zone">
         <summary><strong>ARK Configuration Files (.ini)</strong></summary>
+
+        <!-- Dropdown dynamically populated -->
+        <div class="mt-3">
+            <label for="configSelect" class="form-label"><strong>Select Exiting Configuration:</strong></label>
+            <select id="configSelect" class="form-select" aria-label="Select Exiting Configuration">
+                <option value="">-- Select configuration --</option>
+                <!-- options populated by JS -->
+            </select>
+        </div>
+
         <div class="ini-pair mt-3">
             <div class="ini-box" id="drop-user-settings">
                 <h6>GameUserSettings.ini</h6>
@@ -67,6 +77,7 @@
                 <textarea id="iniContent2" placeholder="Drop or paste Game.ini here..."></textarea>
             </div>
         </div>
+
     </details>
 
     <button class="btn btn-secondary mb-3" id="copyMarkdownBtn">Copy Tables as Markdown</button>
@@ -350,6 +361,58 @@
         toast.show();
     }
 
+    // Populate dropdown dynamically
+    function populateConfigSelector() {
+        const select = document.getElementById('configSelect');
+        const folders = [
+            "Default",
+            "Test"
+        ];
+        folders.forEach(folder => {
+            const option = document.createElement('option');
+            option.value = folder;
+            option.textContent = folder;
+            select.appendChild(option);
+        });
+    }
+
+    // Add new event listener for config dropdown
+    document.getElementById('configSelect').addEventListener('change', async function() {
+        const folder = this.value;
+        if (!folder) {
+            // Clear textareas when no selection
+            document.getElementById('iniContent1').value = '';
+            document.getElementById('iniContent2').value = '';
+            // Clear results area
+            document.getElementById('results').innerHTML = '';
+            return;
+        }
+
+        try {
+            // Fetch both ini files from the folder
+            const [gusResponse, gameResponse] = await Promise.all([
+                fetch(`SurvivalAscended/${folder}/GameUserSettings.ini`),
+                fetch(`SurvivalAscended/${folder}/Game.ini`)
+            ]);
+
+            if (!gusResponse.ok || !gameResponse.ok) {
+                throw new Error("Could not load config files.");
+            }
+
+            const gusText = await gusResponse.text();
+            const gameText = await gameResponse.text();
+
+            document.getElementById('iniContent1').value = gusText;
+            document.getElementById('iniContent2').value = gameText;
+
+            // Trigger recalculation
+            document.getElementById('iniContent1').dispatchEvent(new Event('input'));
+            document.getElementById('iniContent2').dispatchEvent(new Event('input'));
+        } catch (error) {
+            showToast(error.message || "Failed to load config files.");
+        }
+    });
+
     // Activate drop zones
     handleDrop(document.getElementById('drop-user-settings'), 'iniContent1');
     handleDrop(document.getElementById('drop-game-ini'), 'iniContent2');
@@ -357,6 +420,7 @@
     document.getElementById('iniContent2').addEventListener('input', calculate);
     window.addEventListener('DOMContentLoaded', () => {
         calculate();
+        populateConfigSelector();
 
         const modal = new bootstrap.Modal(document.getElementById('formulaModal'), {
             backdrop: 'static',
