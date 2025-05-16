@@ -1,0 +1,371 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>ARK Ascended Config Editor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 2rem;
+        }
+
+        textarea {
+            font-family: monospace;
+            width: 100%;
+            min-height: 300px;
+            resize: vertical;
+        }
+
+        table th, table td {
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .ini-pair {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .ini-box {
+            flex: 1 1 48%;
+        }
+
+        details summary {
+            cursor: pointer;
+        }
+
+        .dropzone {
+            border: 2px dashed #ccc;
+            padding: 0.5rem;
+            border-radius: 5px;
+        }
+
+        .dropzone.dragover {
+            background-color: #e6f7ff;
+            border-color: #007bff;
+        }
+    </style>
+</head>
+<body>
+
+
+<div class="container">
+    <h1 class="mb-4">ARK Ascended Config Editor</h1>
+
+    <!-- Dual INI Editors -->
+    <details class="dropzone mb-4" id="drop-zone">
+        <summary><strong>ARK Configuration Files (.ini)</strong></summary>
+        <div class="ini-pair mt-3">
+            <div class="ini-box" id="drop-user-settings">
+                <h6>GameUserSettings.ini</h6>
+                <textarea id="iniContent1" placeholder="Drop or paste GameUserSettings.ini here..."></textarea>
+            </div>
+            <div class="ini-box" id="drop-game-ini">
+                <h6>Game.ini</h6>
+                <textarea id="iniContent2" placeholder="Drop or paste Game.ini here..."></textarea>
+            </div>
+        </div>
+    </details>
+
+    <button class="btn btn-secondary mb-3" id="copyMarkdownBtn">Copy Tables as Markdown</button>
+
+    <div id="results"></div>
+</div>
+
+<!-- Toast container -->
+<div class="position-fixed top-0 end-0 p-3" style="z-index: 1100">
+    <div id="errorToast" class="toast align-items-center text-bg-danger border-0" role="alert">
+        <div class="d-flex">
+            <div class="toast-body" id="toastMessage">Error message here</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                    aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+
+
+<!-- Formula Warning Modal -->
+<div class="modal fade" id="formulaModal" tabindex="-1" aria-labelledby="formulaModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-warning">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="formulaModalLabel">Heads up!</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                The time formulas used here are not final or verified. Results may not match in-game behavior yet.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-warning" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    const dinos = [
+        {name: "Parasaur", baseTame: 300, baseBreed: 1800},
+        {name: "Argentavis", baseTame: 900, baseBreed: 7200},
+        {name: "Ankylosaurus", baseTame: 900, baseBreed: 7200},
+        {name: "T-Rex", baseTame: 1800, baseBreed: 14400},
+        {name: "Giganotosaurus", baseTame: 3600, baseBreed: 28800}
+    ];
+    const levels = [1, 50, 100, 150];
+
+    function parseMultipliers(iniText) {
+        const lines = iniText.split(/\r?\n/);
+        const multipliers = {
+            TamingSpeedMultiplier: 1,
+            MatingIntervalMultiplier: 1,
+            EggHatchSpeedMultiplier: 1,
+            BabyMatureSpeedMultiplier: 1
+        };
+        for (const line of lines) {
+            for (const key in multipliers) {
+                if (line.trim().startsWith("#")) {
+                    continue;
+                }
+                if (line.trim().startsWith("[")) {
+                    continue;
+                }
+
+                if (line.includes(key)) {
+                    const match = line.match(/=(.+)/);
+                    if (match) {
+                        multipliers[key] = parseFloat(match[1]);
+                    }
+                }
+            }
+        }
+        return multipliers;
+    }
+
+    function createTable(title, data) {
+        let html = `<h4 class="mt-4">${title}</h4>`;
+        html += `<table class="table table-bordered table-striped"><thead><tr><th>Dino</th>`;
+        levels.forEach(lvl => html += `<th>Lvl ${lvl}</th>`);
+        html += '</tr></thead><tbody>';
+        data.forEach(row => {
+            html += `<tr><td>${row.dino}</td>`;
+            levels.forEach(lvl => html += `<td>${row.values[lvl]}</td>`);
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function calculate() {
+        const ini1 = document.getElementById('iniContent1').value.trim();
+        const ini2 = document.getElementById('iniContent2').value.trim();
+
+        const configText = ini1 + "\n" + ini2;
+        const m = parseMultipliers(configText);
+
+        const tables = {
+            "Taming Time (min)": [],
+            "Breeding Time (min)": [],
+            "Baby Maturation Time (min)": []
+        };
+
+        console.log(JSON.stringify(m));
+        dinos.forEach(dino => {
+            const tameRow = {dino: dino.name, values: {}};
+            const breedRow = {dino: dino.name, values: {}};
+            const matureRow = {dino: dino.name, values: {}};
+
+            levels.forEach(lvl => {
+                const tame = (dino.baseTame + lvl * 2) / m.TamingSpeedMultiplier;
+                const breed = (dino.baseBreed + lvl * 5) / (m.BabyMatureSpeedMultiplier * m.EggHatchSpeedMultiplier);
+                const mature = (dino.baseBreed / m.BabyMatureSpeedMultiplier);
+
+                tameRow.values[lvl] = formatTime(tame);  // tame is in minutes, so * 60 to get seconds
+                breedRow.values[lvl] = formatTime(breed);
+                matureRow.values[lvl] = formatTime(mature);
+            });
+
+            tables["Taming Time (min)"].push(tameRow);
+            tables["Breeding Time (min)"].push(breedRow);
+            tables["Baby Maturation Time (min)"].push(matureRow);
+        });
+
+        let resultHtml = '';
+        for (const title in tables) {
+            resultHtml += createTable(title, tables[title]);
+        }
+
+        document.getElementById('results').innerHTML = resultHtml;
+    }
+
+    function formatTime(seconds) {
+        if (seconds < 1) {
+            // Show milliseconds with no decimals
+            return `${Math.round(seconds * 1000)}ms`;
+        }
+        if (seconds < 60) {
+            // Show seconds with no decimals
+            return `${Math.round(seconds)}s`;
+        }
+        const totalMinutes = Math.round(seconds / 60);
+        if (totalMinutes < 60) {
+            return `${totalMinutes}m`;
+        }
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+
+    function handleDrop(zone, textarea) {
+        zone.addEventListener('dragover', e => {
+            e.preventDefault();
+            zone.classList.add('dragover');
+        });
+
+        zone.addEventListener('dragleave', () => {
+            zone.classList.remove('dragover');
+        });
+
+        zone.addEventListener('drop', e => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+
+            // Loop over all dropped files
+            for (const file of e.dataTransfer.files) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const content = e.target.result;
+                    const fileName = file.name.toLowerCase();
+
+                    if (fileName === "gameusersettings.ini") {
+                        document.getElementById('iniContent1').value = content;
+                    } else if (fileName === "game.ini") {
+                        document.getElementById('iniContent2').value = content;
+                    } else {
+                        showToast("Unsupported file: " + file.name);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+    }
+
+    document.getElementById('copyMarkdownBtn').addEventListener('click', () => {
+        const resultsDiv = document.getElementById('results');
+        if (!resultsDiv.innerHTML.trim()) {
+            showToast("No tables to copy!");
+            return;
+        }
+
+        let markdown = '';
+
+        // For each table group: find <h4> title + <table>
+        const sections = resultsDiv.querySelectorAll('h4');
+        sections.forEach((header, i) => {
+            const table = header.nextElementSibling;
+            if (table && table.tagName === 'TABLE') {
+                markdown += `### ${header.textContent.trim()}\n\n`;
+                markdown += tableToMarkdown(table);
+                markdown += '\n\n';
+            }
+        });
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(markdown).then(() => {
+            showToast("Markdown copied to clipboard!", "success");
+        }).catch(() => {
+            showToast("Failed to copy markdown.", "error");
+        });
+    });
+
+    function tableToMarkdown(table) {
+        // Get headers and rows as arrays of strings
+        const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+        const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr =>
+            Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim())
+        );
+
+        // Calculate max width for each column
+        const colCount = headers.length;
+        const colWidths = new Array(colCount).fill(0);
+
+        // Check header widths
+        headers.forEach((h, i) => {
+            if (h.length > colWidths[i]) colWidths[i] = h.length;
+        });
+
+        // Check row widths
+        rows.forEach(row => {
+            row.forEach((cell, i) => {
+                if (cell.length > colWidths[i]) colWidths[i] = cell.length;
+            });
+        });
+
+        // Helper to pad a cell string with spaces on right
+        function padCell(str, width) {
+            return str + ' '.repeat(width - str.length);
+        }
+
+        // Build markdown header line
+        let md = '| ' + headers.map((h, i) => padCell(h, colWidths[i])).join(' | ') + ' |\n';
+
+        // Build separator line
+        md += '| ' + colWidths.map(w => '-'.repeat(w)).join(' | ') + ' |\n';
+
+        // Build each row
+        rows.forEach(row => {
+            md += '| ' + row.map((cell, i) => padCell(cell, colWidths[i])).join(' | ') + ' |\n';
+        });
+
+        return md;
+    }
+
+    function showToast(message, style = 'error') {
+        const toastElement = document.getElementById('errorToast');
+        const toastMessage = document.getElementById('toastMessage');
+
+        // Remove any previous bg color classes
+        toastElement.classList.remove('text-bg-danger', 'text-bg-success', 'text-bg-info', 'text-bg-warning');
+
+        // Add new style class based on input
+        switch (style.toLowerCase()) {
+            case 'success':
+                toastElement.classList.add('text-bg-success');
+                break;
+            case 'info':
+                toastElement.classList.add('text-bg-info');
+                break;
+            case 'warning':
+                toastElement.classList.add('text-bg-warning');
+                break;
+            case 'error':
+            default:
+                toastElement.classList.add('text-bg-danger');
+                break;
+        }
+
+        toastMessage.textContent = message;
+        const toast = new bootstrap.Toast(toastElement);
+        toast.show();
+    }
+
+    // Activate drop zones
+    handleDrop(document.getElementById('drop-user-settings'), 'iniContent1');
+    handleDrop(document.getElementById('drop-game-ini'), 'iniContent2');
+    document.getElementById('iniContent1').addEventListener('input', calculate);
+    document.getElementById('iniContent2').addEventListener('input', calculate);
+    window.addEventListener('DOMContentLoaded', () => {
+        calculate();
+
+        const modal = new bootstrap.Modal(document.getElementById('formulaModal'), {
+            backdrop: 'static',
+            keyboard: false
+        });
+        modal.show();
+    });
+
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
