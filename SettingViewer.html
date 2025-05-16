@@ -366,7 +366,6 @@
         const select = document.getElementById('configSelect');
         const folders = [
             "Default",
-            "Test"
         ];
         folders.forEach(folder => {
             const option = document.createElement('option');
@@ -383,8 +382,6 @@
             // Clear textareas when no selection
             document.getElementById('iniContent1').value = '';
             document.getElementById('iniContent2').value = '';
-            // Clear results area
-            document.getElementById('results').innerHTML = '';
             return;
         }
 
